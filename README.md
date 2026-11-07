@@ -2,9 +2,18 @@
 
 Bot de Discord basado en discord.py.
 
-## Premium manual
+## Configuración en Railway
 
-Los usuarios Premium se guardan en `premium_users.json` como IDs de Discord y `true`, por ejemplo:
+Variables necesarias:
+- `DISCORD_TOKEN`: token privado del bot.
+- `PREMIUM_MANAGER_IDS`: IDs de Discord autorizados para usar `/premium-generar-key`, separados por comas.
+- `PREMIUM_USER_IDS`: opcional; usuarios con Premium permanente, separados por comas.
+
+El bot se inicia con `python railway_start.py`. El lanzador aplica los parches de funciones y después ejecuta `app.py`. Los comandos slash se sincronizan en el servidor definido por `GUILD_ID` en `app.py`; confirma que el bot está instalado en ese servidor y que la aplicación tiene el scope `applications.commands`.
+
+## Premium manual y keys
+
+`premium_users.json` acepta IDs con Premium manual en este formato:
 
 ```json
 {
@@ -12,12 +21,10 @@ Los usuarios Premium se guardan en `premium_users.json` como IDs de Discord y `t
 }
 ```
 
-También se pueden establecer IDs permanentes en la variable de Railway `PREMIUM_USER_IDS`, separados por comas. Para usuarios añadidos al archivo JSON, conserva ese archivo en un volumen persistente de Railway o usa la variable de entorno; el almacenamiento efímero puede perderse al redeplegar.
+`/premium-generar-key` crea una key de un solo uso, válida por la duración elegida. El bot guarda solamente su hash en `premium_keys.json`. El backend web futuro deberá validar la key con `redeem_premium_key(key, discord_user_id)` después de autenticar la cuenta Discord.
 
-Para generar keys desde Discord, configura `PREMIUM_MANAGER_IDS` en Railway con los IDs de las cuentas autorizadas, separados por comas. Esas cuentas podrán usar `/premium-generar-key` e indicar la duración entre 1 y 3650 días. La key se muestra una sola vez en una respuesta privada y su hash se guarda en `premium_keys.json`.
-
-El backend web que se implemente después deberá validar una key llamando a `redeem_premium_key(key, discord_user_id)` desde `premium_backup_system.py`. La key es de un solo uso. Para producción, guarda `premium_users.json` y `premium_keys.json` en almacenamiento persistente o migra a una base de datos compartida antes de desplegar el sitio.
+Los archivos JSON deben estar en almacenamiento persistente de Railway, o se perderán al recrearse el contenedor. Los usuarios añadidos mediante `PREMIUM_USER_IDS` no necesitan escribirse en el JSON.
 
 ## Copias de seguridad
 
-`/seguridad-copia` y la restauración requieren que el usuario tenga Premium y sea propietario o administrador del servidor. Se respalda la estructura de categorías y canales de texto/voz, así como permisos básicos. La restauración recrea elementos faltantes y **no borra canales existentes**. No guarda mensajes ni garantiza la recuperación de todo tipo de canal.
+`/seguridad-copia` requiere una cuenta Premium y ser propietario o administrador. Se guardan categorías y canales de texto/voz, con permisos básicos. Restaurar recrea elementos faltantes y no borra los canales existentes. Las copias no contienen mensajes y el bot necesita el permiso `Administrar canales`.
