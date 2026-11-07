@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import time
 from pathlib import Path
 
@@ -7,271 +8,249 @@ import discord
 
 PREMIUM_USERS_FILE = Path("premium_users.json")
 BACKUP_FILE = Path("premium_backups.json")
+BACKUP_INTERVAL = 5 * 60 * 60
 
 
-def _load_json(path: Path, default):
+def _read_json(path, default):
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
         return default
-    return data if isinstance(data, type(default)) else default
+    return value if isinstance(value, type(default)) else default
 
 
-def _save_json(path: Path, data):
+def _write_json(path, value):
+    temporary = path.with_suffix(path.suffix + ".tmp")
     try:
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    except OSError:
-        pass
+        temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(path)
+    except OSError as error:
+        print(f"No se pudo guardar {path.name}: {error}")
 
 
-def get_premium_users():
-    return _load_json(PREMIUM_USERS_FILE, {})
+def premium_user_ids():
+    users = _read_json(PREMIUM_USERS_FILE, {})
+    ids = {str(user_id) for user_id, active in users.items() if active}
+    ids.update(value.strip() for value in os.getenv("PREMIUM_USER_IDS", "").split(",") if value.strip().isdecimal())
+    return ids
 
 
-def is_premium_user(user_id) -> bool:
-    user_id = str(user_id)
-    return bool(get_premium_users().get(user_id, False))
+def is_premium_user(user_id):
+    return str(user_id) in premium_user_ids()
 
 
-def set_premium_user(user_id, enabled: bool = True):
-    users = get_premium_users()
+def set_premium_user(user_id, enabled=True):
+    users = _read_json(PREMIUM_USERS_FILE, {})
     key = str(user_id)
     if enabled:
         users[key] = True
     else:
         users.pop(key, None)
-    _save_json(PREMIUM_USERS_FILE, users)
+    _write_json(PREMIUM_USERS_FILE, users)
 
 
-def load_backups():
-    return _load_json(BACKUP_FILE, {})
+def _serialize_overwrites(overwrites):
+    result = []
+    for target, overwrite in overwrites.items():
+        target_type = "role" if isinstance(target, discord.Role) else "member"
+        allow, deny = overwrite.pair()
+        result.append({"type": target_type, "id": target.id, "allow": allow.value, "deny": deny.value})
+    return result
 
 
-def _channel_key(channel) -> tuple:
-    parent_name = channel.category.name if getattr(channel, "category", None) else ""
-    return (parent_name, getattr(channel, "name", ""), str(getattr(channel, "type", "")))
+def _restore_overwrites(guild, entries):
+    result = {}
+    for entry in entries or []:
+        target_id = int(entry["id"])
+        target = guild.get_role(target_id) if entry.get("type") == "role" else guild.get_member(target_id)
+        if target is None and entry.get("type") == "role" and target_id == guild.id:
+            target = guild.default_role
+        if target is None:
+            continue
+        allow = discord.Permissions(int(entry.get("allow", 0)))
+        deny = discord.Permissions(int(entry.get("deny", 0)))
+        result[target] = discord.PermissionOverwrite.from_pair(allow, deny)
+    return result
 
 
-async def save_server_snapshot(guild: discord.Guild):
+def _channel_snapshot(channel):
+    data = {
+        "name": channel.name,
+        "position": channel.position,
+        "overwrites": _serialize_overwrites(channel.overwrites),
+        "category": channel.category.name if channel.category else None,
+    }
+    if isinstance(channel, discord.TextChannel):
+        data.update(type="text", topic=channel.topic, nsfw=channel.nsfw, slowmode_delay=channel.slowmode_delay)
+    elif isinstance(channel, discord.VoiceChannel):
+        data.update(type="voice", bitrate=channel.bitrate, user_limit=channel.user_limit)
+    else:
+        return None
+    return data
+
+
+async def save_server_snapshot(guild):
     snapshot = {
         "guild_id": guild.id,
         "guild_name": guild.name,
         "created_at": int(time.time()),
-        "categories": [],
+        "categories": [
+            {
+                "name": category.name,
+                "position": category.position,
+                "overwrites": _serialize_overwrites(category.overwrites),
+            }
+            for category in guild.categories
+        ],
         "channels": [],
     }
-
-    for category in guild.categories:
-        category_data = {
-            "name": category.name,
-            "position": category.position,
-            "channels": [],
-        }
-        for channel in category.channels:
-            channel_data = {
-                "name": channel.name,
-                "type": str(channel.type),
-                "position": channel.position,
-                "topic": getattr(channel, "topic", None),
-                "nsfw": getattr(channel, "nsfw", False),
-                "slowmode_delay": getattr(channel, "slowmode_delay", 0),
-                "category": category.name,
-            }
-            category_data["channels"].append(channel_data)
-        snapshot["categories"].append(category_data)
-
     for channel in guild.channels:
-        if channel.category is not None:
-            continue
-        snapshot["channels"].append({
-            "name": channel.name,
-            "type": str(channel.type),
-            "position": channel.position,
-            "topic": getattr(channel, "topic", None),
-            "nsfw": getattr(channel, "nsfw", False),
-            "slowmode_delay": getattr(channel, "slowmode_delay", 0),
-            "category": None,
-        })
-
-    backups = load_backups()
+        data = _channel_snapshot(channel)
+        if data is not None:
+            snapshot["channels"].append(data)
+    backups = _read_json(BACKUP_FILE, {})
     backups[str(guild.id)] = snapshot
-    _save_json(BACKUP_FILE, backups)
+    _write_json(BACKUP_FILE, backups)
     return snapshot
 
 
-async def restore_server_snapshot(guild: discord.Guild, snapshot=None):
-    if snapshot is None:
-        backup = load_backups().get(str(guild.id))
-        if not backup:
-            return False
-        snapshot = backup
+def load_server_snapshot(guild_id):
+    return _read_json(BACKUP_FILE, {}).get(str(guild_id))
 
-    snapshot_by_key = set()
-    for category_data in snapshot.get("categories", []):
-        for channel_data in category_data.get("channels", []):
-            snapshot_by_key.add((category_data["name"], channel_data["name"], channel_data["type"]))
-    for channel_data in snapshot.get("channels", []):
-        snapshot_by_key.add(("", channel_data["name"], channel_data["type"]))
 
-    for channel in list(guild.channels):
-        if (channel.category.name if channel.category else "", channel.name, str(channel.type)) not in snapshot_by_key:
-            try:
-                await channel.delete(reason="Restauración premium de seguridad")
-            except (discord.Forbidden, discord.HTTPException):
-                pass
+async def restore_server_snapshot(guild, snapshot=None):
+    """Restore missing categories/text/voice channels; never deletes existing channels."""
+    snapshot = snapshot or load_server_snapshot(guild.id)
+    if not snapshot:
+        return False, "No hay una copia guardada para este servidor."
+    bot_member = guild.me
+    if bot_member is None or not bot_member.guild_permissions.manage_channels:
+        return False, "Al bot le falta el permiso Administrar canales."
 
-    existing_categories = {category.name: category for category in guild.categories}
-    for category_data in snapshot.get("categories", []):
-        category_name = category_data["name"]
-        if category_name not in existing_categories:
-            try:
-                created = await guild.create_category(category_name, reason="Restauración premium")
-                existing_categories[category_name] = created
-            except (discord.Forbidden, discord.HTTPException):
-                continue
-
-    for category_data in snapshot.get("categories", []):
-        category_name = category_data["name"]
-        category_obj = existing_categories.get(category_name)
-        if category_obj is None:
-            continue
-        existing_channels = {(channel.category.name if channel.category else "", channel.name, str(channel.type)) for channel in category_obj.channels}
-        for channel_data in category_data.get("channels", []):
-            key = (category_name, channel_data["name"], channel_data["type"])
-            if key in existing_channels:
-                continue
-            try:
-                if "text" in channel_data["type"].lower():
-                    await guild.create_text_channel(
-                        channel_data["name"],
-                        category=category_obj,
-                        topic=channel_data.get("topic"),
-                        nsfw=channel_data.get("nsfw", False),
-                        slowmode_delay=channel_data.get("slowmode_delay", 0),
-                        reason="Restauración premium",
-                    )
-                elif "voice" in channel_data["type"].lower():
-                    await guild.create_voice_channel(
-                        channel_data["name"],
-                        category=category_obj,
-                        reason="Restauración premium",
-                    )
-            except (discord.Forbidden, discord.HTTPException):
-                pass
-
-    existing_top_channels = {("", channel.name, str(channel.type)) for channel in guild.channels if channel.category is None}
-    for channel_data in snapshot.get("channels", []):
-        key = ("", channel_data["name"], channel_data["type"])
-        if key in existing_top_channels:
+    categories = {category.name: category for category in guild.categories}
+    for item in snapshot.get("categories", []):
+        if item["name"] in categories:
             continue
         try:
-            if "text" in channel_data["type"].lower():
-                await guild.create_text_channel(
-                    channel_data["name"],
-                    topic=channel_data.get("topic"),
-                    nsfw=channel_data.get("nsfw", False),
-                    slowmode_delay=channel_data.get("slowmode_delay", 0),
-                    reason="Restauración premium",
-                )
-            elif "voice" in channel_data["type"].lower():
-                await guild.create_voice_channel(channel_data["name"], reason="Restauración premium")
-        except (discord.Forbidden, discord.HTTPException):
-            pass
+            categories[item["name"]] = await guild.create_category(
+                item["name"],
+                overwrites=_restore_overwrites(guild, item.get("overwrites")),
+                reason="Restauración de copia de seguridad premium",
+            )
+        except (discord.Forbidden, discord.HTTPException) as error:
+            print(f"No se pudo recrear la categoría {item['name']}: {error}")
 
-    return True
+    created = 0
+    for item in snapshot.get("channels", []):
+        category_name = item.get("category")
+        category = categories.get(category_name) if category_name else None
+        if category_name and category is None:
+            continue
+        existing = next((
+            channel for channel in guild.channels
+            if channel.name == item["name"]
+            and ((channel.category.name if channel.category else None) == category_name)
+            and ((item["type"] == "text" and isinstance(channel, discord.TextChannel))
+                 or (item["type"] == "voice" and isinstance(channel, discord.VoiceChannel)))
+        ), None)
+        if existing is not None:
+            continue
+        try:
+            overwrites = _restore_overwrites(guild, item.get("overwrites"))
+            if item["type"] == "text":
+                await guild.create_text_channel(
+                    item["name"], category=category, topic=item.get("topic"),
+                    nsfw=bool(item.get("nsfw", False)),
+                    slowmode_delay=int(item.get("slowmode_delay", 0)),
+                    overwrites=overwrites,
+                    reason="Restauración de copia de seguridad premium",
+                )
+            elif item["type"] == "voice":
+                await guild.create_voice_channel(
+                    item["name"], category=category,
+                    bitrate=item.get("bitrate"), user_limit=int(item.get("user_limit", 0)),
+                    overwrites=overwrites,
+                    reason="Restauración de copia de seguridad premium",
+                )
+            created += 1
+        except (discord.Forbidden, discord.HTTPException, TypeError, ValueError) as error:
+            print(f"No se pudo recrear el canal {item['name']}: {error}")
+
+    return True, f"Restauración completada. Se crearon {created} canal(es); no se borró ningún canal existente."
 
 
 class BackupRestoreView(discord.ui.View):
-    def __init__(self, guild_id: int):
+    def __init__(self, guild_id):
         super().__init__(timeout=None)
-        self.guild_id = guild_id
+        self.guild_id = int(guild_id)
+        button = discord.ui.Button(
+            label="Restaurar copia", style=discord.ButtonStyle.primary,
+            custom_id=f"premium_backup:restore:{self.guild_id}",
+        )
+        button.callback = self.restore_button
+        self.add_item(button)
 
-    @discord.ui.button(label="Restaurar copia", style=discord.ButtonStyle.danger)
-    async def restore_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.guild is not None:
-            guild = interaction.guild
-        else:
-            guild = interaction.client.get_guild(self.guild_id)
-
+    async def restore_button(self, interaction):
+        guild = interaction.client.get_guild(self.guild_id)
         if guild is None:
-            await interaction.response.send_message("No pude localizar ese servidor.", ephemeral=True)
+            await interaction.response.send_message("No pude encontrar el servidor.", ephemeral=interaction.guild is not None)
             return
-
-        if not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("Este botón solo se usa dentro de un servidor.", ephemeral=True)
-            return
-
-        if not (interaction.user.id == guild.owner_id or interaction.user.guild_permissions.administrator):
-            await interaction.response.send_message("Necesitas ser propietario o administrador del servidor.", ephemeral=True)
-            return
-
-        if not is_premium_user(interaction.user.id):
-            await interaction.response.send_message("Este comando es premium. Activa tu plan para restaurar la copia.", ephemeral=True)
-            return
-
-        snapshot = load_backups().get(str(guild.id))
-        if not snapshot:
-            await interaction.response.send_message("Aún no hay una copia de seguridad guardada para este servidor.", ephemeral=True)
-            return
-
-        await interaction.response.send_message("🔄 Restaurando la estructura del servidor…", ephemeral=True)
-        await restore_server_snapshot(guild, snapshot)
-        await interaction.followup.send("✅ La estructura del servidor ha sido restaurada con la copia guardada.", ephemeral=True)
-
-
-async def send_backup_dm_to_admins(guild: discord.Guild):
-    if guild is None:
-        return
-    await save_server_snapshot(guild)
-    for member in guild.members:
-        if member.bot:
-            continue
-        if not is_premium_user(member.id):
-            continue
-        if not (member.id == guild.owner_id or member.guild_permissions.administrator):
-            continue
-        try:
-            await member.send(
-                f"**{guild.name}**\nCopia de seguridad guardada. Cuando quieras, pulsa el botón para restaurar el servidor a su estado anterior.",
-                view=BackupRestoreView(guild.id),
-                allowed_mentions=discord.AllowedMentions.none(),
-            )
-        except (discord.Forbidden, discord.HTTPException):
-            pass
-
-
-async def premium_backup_scheduler(client: discord.Client):
-    while not client.is_closed():
-        for guild in client.guilds:
+        member = guild.get_member(interaction.user.id)
+        if member is None:
             try:
-                await save_server_snapshot(guild)
-                await send_backup_dm_to_admins(guild)
-            except (discord.Forbidden, discord.HTTPException):
-                pass
-        await asyncio.sleep(5 * 60 * 60)
-
-
-async def ensure_premium_role_for_user(user: discord.Member, guild: discord.Guild):
-    if user.bot:
-        return
-    if not is_premium_user(user.id):
-        return
-    role = discord.utils.get(guild.roles, name="Premium")
-    if role is None:
-        try:
-            role = await guild.create_role(name="Premium", reason="Suscripción premium")
-        except (discord.Forbidden, discord.HTTPException):
+                member = await guild.fetch_member(interaction.user.id)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                member = None
+        if member is None or not (member.id == guild.owner_id or member.guild_permissions.administrator):
+            await interaction.response.send_message(
+                "Debes ser propietario o administrador de ese servidor.",
+                ephemeral=interaction.guild is not None,
+            )
             return
-    if role not in user.roles:
-        try:
-            await user.add_roles(role, reason="Usuario premium activo")
-        except (discord.Forbidden, discord.HTTPException):
-            pass
+        if not is_premium_user(member.id):
+            await interaction.response.send_message(
+                "Tu cuenta no tiene Premium activo.", ephemeral=interaction.guild is not None,
+            )
+            return
+        await interaction.response.defer(ephemeral=interaction.guild is not None)
+        success, message = await restore_server_snapshot(guild)
+        await interaction.followup.send(("✅ " if success else "⚠️ ") + message, ephemeral=interaction.guild is not None)
 
 
-async def ensure_premium_user_access(guild: discord.Guild):
-    for member in guild.members:
-        if member.bot:
+async def _premium_admin_members(guild):
+    for user_id in premium_user_ids():
+        member = guild.get_member(int(user_id))
+        if member is None:
+            try:
+                member = await guild.fetch_member(int(user_id))
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException, ValueError):
+                continue
+        if member.id == guild.owner_id or member.guild_permissions.administrator:
+            yield member
+
+
+async def _backup_and_notify(client):
+    for guild in client.guilds:
+        recipients = [member async for member in _premium_admin_members(guild)]
+        if not recipients:
             continue
-        if is_premium_user(member.id):
-            await ensure_premium_role_for_user(member, guild)
+        await save_server_snapshot(guild)
+        view = BackupRestoreView(guild.id)
+        for member in recipients:
+            try:
+                await member.send(
+                    f"**{guild.name}**\nCopia de seguridad guardada. Cuando quieras, pulsa el botón de abajo para restaurar la estructura del servidor.",
+                    view=view,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            except (discord.Forbidden, discord.HTTPException) as error:
+                print(f"No pude enviar el DM de copia a {member.id}: {error}")
+
+
+async def premium_backup_scheduler(client):
+    while not client.is_closed():
+        try:
+            await _backup_and_notify(client)
+        except Exception as error:
+            print(f"Error al crear copias premium: {type(error).__name__}: {error}")
+        await asyncio.sleep(BACKUP_INTERVAL)
