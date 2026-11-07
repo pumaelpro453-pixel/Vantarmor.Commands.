@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#050505">
+  <meta name="description" content="Vantarmor Commands: protección y herramientas para tu comunidad de Discord.">
+  <title>Vantarmor Commands</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="glow glow-a"></div><div class="glow glow-b"></div>
+  <header class="topbar">
+    <a class="brand" href="#inicio" aria-label="Vantarmor inicio"><span class="brand-mark">V</span><span>VANTARMOR <b>COMMANDS</b></span></a>
+    <button id="menu-toggle" class="menu-toggle" aria-label="Abrir menú" aria-expanded="false"><i></i><i></i><i></i></button>
+    <nav id="nav" class="nav">
+      <a href="#inicio">Inicio</a><a href="#estado">Estado</a><a href="#funciones">Funciones</a><a href="#invitar">Invita bot</a><a href="#planes">Planes</a><a href="#ajustes">Ajustes</a>
+    </nav>
+    <a id="login-top" class="button button-small" href="/auth/discord">Verificar con Discord</a>
+  </header>
+  <main>
+    <section id="inicio" class="hero section">
+      <div class="hero-copy"><span class="eyebrow"><span class="live-dot"></span> SEGURIDAD PARA TU COMUNIDAD</span>
+        <h1>Tu servidor.<br><span class="shine">Bajo control.</span></h1>
+        <p>Herramientas de moderación, protección y gestión para que tu comunidad crezca con confianza.</p>
+        <div class="actions"><a class="button" href="/auth/discord">Continuar con Discord <span>↗</span></a><a class="button button-ghost" href="#funciones">Explorar funciones</a></div>
+        <div class="trust"><span class="avatar-stack"><i>V</i><i>✓</i><i>+</i></span><span>Protección y herramientas en un solo bot</span></div>
+      </div>
+      <div class="hero-card"><div class="card-head"><span class="window-dots">● ● ●</span><span>VANTARMOR / PANEL</span><span class="status-pill">ACTIVO</span></div><div class="shield">⌑</div><h3>Protección inteligente</h3><p>Moderación, registros y copias de seguridad de estructura.</p><div class="scan"><span></span></div><div class="card-foot"><span>ESTADO DEL SISTEMA</span><strong><i class="live-dot"></i> Operativo</strong></div></div>
+    </section>
+    <section id="estado" class="section"><div class="section-title"><span class="eyebrow">EN TIEMPO REAL</span><h2>Estado del servicio</h2><p>Información pública de Vantarmor Commands.</p></div><div class="stats-grid"><article class="stat-card"><span>Protección</span><strong class="stat-live"><i class="live-dot"></i> Operativa</strong><small>El bot responde con normalidad</small></article><article class="stat-card"><span>Servidores conectados</span><strong id="server-count">—</strong><small>Instalaciones del bot</small></article><article class="stat-card"><span>Miembros de la web</span><strong id="web-count">—</strong><small>Cuentas verificadas con Discord</small></article></div></section>
+    <section id="funciones" class="section"><div class="section-title"><span class="eyebrow">QUÉ INCLUYE</span><h2>Herramientas para moderar mejor</h2><p>Funciones claras para mantener tu comunidad organizada y segura.</p></div><div class="feature-grid" id="features"></div></section>
+    <section id="invitar" class="section invite-section"><div class="invite-box"><div><span class="eyebrow">LISTO PARA TU COMUNIDAD</span><h2>Invita Vantarmor</h2><p>Elige un servidor donde seas propietario o administrador. Discord te pedirá confirmar la instalación y los permisos del bot.</p></div><div class="invite-action"><select id="guild-select" aria-label="Elige un servidor"><option value="">Inicia sesión para cargar tus servidores</option></select><a id="invite-button" class="button" href="/auth/discord">Verificar con Discord</a><small>La autorización y los permisos se confirman en Discord.</small></div></div></section>
+    <section id="planes" class="section"><div class="section-title"><span class="eyebrow">PLANES</span><h2>Empieza gratis. Mejora cuando quieras.</h2><p>Premium se vincula a tu cuenta de Discord.</p></div><div class="plans-grid"><article class="plan-card"><span class="plan-label">FREE</span><h3>Gratis</h3><p class="price">$0 <small>/ siempre</small></p><p>Herramientas esenciales para empezar.</p><ul><li>Comandos Free disponibles</li><li>Moderación y utilidades básicas</li><li>Sin costo</li></ul><a href="#funciones" class="button button-ghost full">Ver comandos Free</a></article><article class="plan-card premium-plan"><span class="plan-label">MÁS PROTECCIÓN</span><h3>Premium</h3><p class="price">$3 <small>/ acceso</small></p><p>Funciones adicionales para administradores Premium.</p><ul><li>Incluye los comandos Free</li><li>/seguridad-copia y restauración segura</li><li>Copia solo del servidor donde se ejecuta</li></ul><a class="button full" href="https://discord.gg/YD7uY3AHz" target="_blank" rel="noopener">Comprar / consultar por Discord ↗</a><div class="redeem"><label for="premium-key">¿Tienes una key? Reclámala aquí</label><div class="redeem-row"><input id="premium-key" type="text" placeholder="VANT-…" autocomplete="off" maxlength="160"><button id="redeem-button" class="button button-small">Reclamar</button></div><p id="redeem-message" role="status"></p></div></article></div><p class="fine-print">El precio y la duración final se confirman en Discord. No introduzcas keys en páginas que no sean este dominio.</p></section>
+    <section id="ajustes" class="section settings-section"><div class="section-title"><span class="eyebrow">TU CUENTA</span><h2>Ajustes</h2><p>Perfil vinculado de forma segura con Discord.</p></div><article class="profile-card" id="profile-card"><div class="profile-avatar placeholder">?</div><div class="profile-details"><strong>Inicia sesión para ver tu perfil</strong><span>Tu nombre y avatar de Discord aparecerán aquí.</span></div><a class="button button-small" href="/auth/discord">Iniciar sesión</a></article><div id="account-actions" class="account-actions"></div></section>
+  </main>
+  <footer><a class="brand" href="#inicio"><span class="brand-mark">V</span><span>VANTARMOR <b>COMMANDS</b></span></a><span>Hecho para comunidades más seguras.</span><a href="https://discord.gg/YD7uY3AHz" target="_blank" rel="noopener">Soporte en Discord ↗</a></footer>
+  <div id="toast" class="toast" role="status"></div>
+</body>
+</html>

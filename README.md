@@ -1,30 +1,32 @@
-# Vantarmor.Commands.
+# Vantarmor Commands
 
-Bot de Discord basado en discord.py.
+Bot de Discord con web de cuenta, acceso OAuth2, comandos y funciones Premium.
 
-## Configuración en Railway
+## Variables de Railway
 
-Variables necesarias:
+Obligatorias para iniciar el bot:
 - `DISCORD_TOKEN`: token privado del bot.
+
+Para login web de Discord:
+- `DISCORD_CLIENT_ID`: ID de aplicación del bot.
+- `DISCORD_CLIENT_SECRET`: secreto OAuth de esa aplicación; nunca lo publiques.
+- `DISCORD_REDIRECT_URI`: URL pública exacta terminada en `/auth/callback`.
+- `PUBLIC_BASE_URL`: dominio HTTPS público de Railway (opcional, para cookies seguras si no está `RAILWAY_PUBLIC_DOMAIN`).
+
+Para administración de keys y datos:
 - `PREMIUM_MANAGER_IDS`: IDs de Discord autorizados para usar `/premium-generar-key`, separados por comas.
-- `PREMIUM_USER_IDS`: opcional; usuarios con Premium permanente, separados por comas.
+- `PREMIUM_USER_IDS`: IDs con Premium manual permanente, separados por comas.
+- `VANTARMOR_DATA_DIR`: ruta de datos persistente montada en Railway; monta un volumen en esa ruta para conservar keys, Premium y estadísticas entre despliegues.
+- `BOT_INVITE_URL`: opcional; URL personalizada de invitación. Por defecto se genera con permiso de administrador.
 
-El bot se inicia con `python railway_start.py`. El lanzador aplica los parches de funciones y después ejecuta `app.py`. Los comandos slash se sincronizan en el servidor definido por `GUILD_ID` en `app.py`; confirma que el bot está instalado en ese servidor y que la aplicación tiene el scope `applications.commands`.
+Configura en el portal de Discord OAuth2 la misma URL `DISCORD_REDIRECT_URI` como Redirect URI y usa el scope `identify guilds`. La web arranca junto al bot en el puerto `PORT` de Railway.
 
-## Premium manual y keys
+## Web
 
-`premium_users.json` acepta IDs con Premium manual en este formato:
+La web ofrece Inicio, Estado, Funciones, Invita bot, Planes y Ajustes; verifica usuarios con Discord OAuth2, muestra perfil/avatar, admite cerrar sesión y permite reclamar keys de un solo uso. La sección de compra enlaza con https://discord.gg/YD7uY3AHz. Los datos de estadísticas son cuentas que iniciaron sesión y el valor `BOT_GUILD_COUNT`; configura este último desde una fuente real si deseas mostrar conteo de servidores.
 
-```json
-{
-  "123456789012345678": true
-}
-```
+El precio de $3 se presenta como referencia y la compra se gestiona por Discord; no hay procesamiento de pagos integrado. Los comandos premium se validan en el bot y Discord puede seguir mostrando comandos a administradores; la web no puede cambiar esa limitación.
 
-`/premium-generar-key` crea una key de un solo uso, válida por la duración elegida. El bot guarda solamente su hash en `premium_keys.json`. El backend web futuro deberá validar la key con `redeem_premium_key(key, discord_user_id)` después de autenticar la cuenta Discord.
+## Copias Premium
 
-Los archivos JSON deben estar en almacenamiento persistente de Railway, o se perderán al recrearse el contenedor. Los usuarios añadidos mediante `PREMIUM_USER_IDS` no necesitan escribirse en el JSON.
-
-## Copias de seguridad
-
-`/seguridad-copia` requiere una cuenta Premium y ser propietario o administrador. Se guardan categorías y canales de texto/voz, con permisos básicos. Restaurar recrea elementos faltantes y no borra los canales existentes. Las copias no contienen mensajes y el bot necesita el permiso `Administrar canales`.
+`/seguridad-copia` guarda estructura de categorías/canales del servidor donde se ejecuta. La restauración solo recrea lo que falta y no elimina canales existentes. No conserva mensajes. Premium se vincula a cuenta Discord.

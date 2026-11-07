@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 IMPORTS = '''from premium_backup_system import (
     BackupRestoreView,
     generate_premium_key,
@@ -23,19 +22,15 @@ async def premium_generar_key(interaction: discord.Interaction, dias: app_comman
     except (OSError, ValueError) as error:
         await interaction.response.send_message(f"No pude generar la key: {error}", ephemeral=True)
         return
-    await interaction.response.send_message(
-        f"🔑 Key Premium válida por **{dias} días** (un solo uso):\\n```{key}```\\nGuárdala ahora: no se almacena en texto legible y no se podrá volver a mostrar.",
-        ephemeral=True,
-    )
+    await interaction.response.send_message(f"🔑 Key válida por **{dias} días** (un solo uso):\\n```{key}```", ephemeral=True)
 
 
 '''
 
-COMMAND = '''@tree.command(name="seguridad-copia", description="Guarda una copia de la estructura del servidor", guild=GUILD)
+BACKUP_COMMAND = '''@tree.command(name="seguridad-copia", description="Guarda una copia de la estructura de este servidor", guild=GUILD)
 @app_commands.default_permissions(administrator=True)
 async def seguridad_copia(interaction: discord.Interaction):
-    guild = interaction.guild
-    member = interaction.user
+    guild, member = interaction.guild, interaction.user
     if guild is None or not isinstance(member, discord.Member):
         await interaction.response.send_message("Este comando solo funciona en un servidor.", ephemeral=True)
         return
@@ -47,9 +42,8 @@ async def seguridad_copia(interaction: discord.Interaction):
         return
     await save_server_snapshot(guild)
     await interaction.response.send_message(
-        f"✅ Copia de seguridad guardada para **{guild.name}**.\\nLa restauración solo recrea categorías y canales que falten; no elimina canales existentes.",
-        view=BackupRestoreView(guild.id),
-        ephemeral=True,
+        f"✅ Copia guardada únicamente para **{guild.name}**. La restauración recrea categorías y canales que falten y no elimina los existentes.",
+        view=BackupRestoreView(guild.id), ephemeral=True,
     )
 
 
@@ -63,20 +57,14 @@ def patch_app_file(app_file: Path):
         if anchor not in source:
             raise RuntimeError("No encontré el punto de importación en app.py.")
         source = source.replace(anchor, anchor + IMPORTS, 1)
-
-    if 'name="premium-generar-key"' not in source:
-        anchor = '@tree.command(name="ping", description="Comprueba si el bot responde", guild=GUILD)\n'
-        if anchor not in source:
-            raise RuntimeError("No encontré el comando ping para insertar /premium-generar-key.")
-        source = source.replace(anchor, KEY_COMMAND + anchor, 1)
-    if 'name="seguridad-copia"' not in source:
-        anchor = '@tree.command(name="ping", description="Comprueba si el bot responde", guild=GUILD)\n'
-        if anchor not in source:
-            raise RuntimeError("No encontré el comando ping para insertar /seguridad-copia.")
-        source = source.replace(anchor, COMMAND + anchor, 1)
-
-    on_ready_anchor = '    print(f"Conectado como {client.user}")\n'
-    on_ready_setup = '''    if not getattr(client, "premium_backup_views_registered", False):
+    anchor = '@tree.command(name="ping", description="Comprueba si el bot responde", guild=GUILD)\n'
+    for name, block in (("premium-generar-key", KEY_COMMAND), ("seguridad-copia", BACKUP_COMMAND)):
+        if f'name="{name}"' not in source:
+            if anchor not in source:
+                raise RuntimeError(f"No encontré el lugar para registrar /{name}.")
+            source = source.replace(anchor, block + anchor, 1)
+    ready_anchor = '    print(f"Conectado como {client.user}")\n'
+    ready_code = '''    if not getattr(client, "premium_backup_views_registered", False):
         for server in client.guilds:
             client.add_view(BackupRestoreView(server.id))
         client.premium_backup_views_registered = True
@@ -85,11 +73,9 @@ def patch_app_file(app_file: Path):
         client.premium_backup_task = asyncio.create_task(premium_backup_scheduler(client))
 '''
     if "premium_backup_views_registered" not in source:
-        if on_ready_anchor not in source:
+        if ready_anchor not in source:
             raise RuntimeError("No encontré el inicio de on_ready en app.py.")
-        source = source.replace(on_ready_anchor, on_ready_anchor + on_ready_setup, 1)
-
+        source = source.replace(ready_anchor, ready_anchor + ready_code, 1)
     app_file.write_text(source, encoding="utf-8")
-
 
 __all__ = ["patch_app_file"]
