@@ -1,14 +1,20 @@
 import asyncio
+import hashlib
+import hmac
 import json
 import os
+import secrets
+import threading
 import time
 from pathlib import Path
 
 import discord
 
 PREMIUM_USERS_FILE = Path("premium_users.json")
+PREMIUM_KEYS_FILE = Path("premium_keys.json")
 BACKUP_FILE = Path("premium_backups.json")
 BACKUP_INTERVAL = 5 * 60 * 60
+_STORAGE_LOCK = threading.RLock()
 
 
 def _read_json(path, default):
@@ -24,13 +30,25 @@ def _write_json(path, value):
     try:
         temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
         temporary.replace(path)
+        return True
     except OSError as error:
         print(f"No se pudo guardar {path.name}: {error}")
+        return False
 
 
 def premium_user_ids():
     users = _read_json(PREMIUM_USERS_FILE, {})
-    ids = {str(user_id) for user_id, active in users.items() if active}
+    current_time = int(time.time())
+    ids = set()
+    for user_id, value in users.items():
+        if value is True:
+            ids.add(str(user_id))
+        elif isinstance(value, int) and not isinstance(value, bool) and value > current_time:
+            ids.add(str(user_id))
+        elif isinstance(value, dict):
+            expires_at = value.get("expires_at")
+            if expires_at is None or (isinstance(expires_at, int) and expires_at > current_time):
+                ids.add(str(user_id))
     ids.update(value.strip() for value in os.getenv("PREMIUM_USER_IDS", "").split(",") if value.strip().isdecimal())
     return ids
 
@@ -40,13 +58,76 @@ def is_premium_user(user_id):
 
 
 def set_premium_user(user_id, enabled=True):
-    users = _read_json(PREMIUM_USERS_FILE, {})
-    key = str(user_id)
-    if enabled:
-        users[key] = True
-    else:
-        users.pop(key, None)
-    _write_json(PREMIUM_USERS_FILE, users)
+    with _STORAGE_LOCK:
+        users = _read_json(PREMIUM_USERS_FILE, {})
+        key = str(user_id)
+        if enabled:
+            users[key] = True
+        else:
+            users.pop(key, None)
+        return _write_json(PREMIUM_USERS_FILE, users)
+
+
+def _key_digest(key):
+    return hashlib.sha256(key.strip().encode("utf-8")).hexdigest()
+
+
+def generate_premium_key(days, created_by):
+    """Create a one-use key; only its SHA-256 digest is persisted."""
+    if not 1 <= int(days) <= 3650:
+        raise ValueError("La duración debe ser de 1 a 3650 días.")
+    key = "VANT-" + secrets.token_urlsafe(24)
+    digest = _key_digest(key)
+    with _STORAGE_LOCK:
+        keys = _read_json(PREMIUM_KEYS_FILE, {})
+        keys[digest] = {"days": int(days), "created_at": int(time.time()), "created_by": str(created_by)}
+        if not _write_json(PREMIUM_KEYS_FILE, keys):
+            raise OSError("No se pudo guardar la key; no la compartas ni la uses.")
+    return key
+
+
+def redeem_premium_key(key, user_id):
+    """Redeem a key once. This function can be called by the future website backend."""
+    if not isinstance(key, str) or not key.strip():
+        return False
+    digest = _key_digest(key)
+    with _STORAGE_LOCK:
+        keys = _read_json(PREMIUM_KEYS_FILE, {})
+        record = keys.get(digest)
+        if not isinstance(record, dict) or record.get("redeemed_at"):
+            return False
+        users = _read_json(PREMIUM_USERS_FILE, {})
+        user_key = str(user_id)
+        now = int(time.time())
+        old_value = users.get(user_key)
+        if old_value is True or (isinstance(old_value, dict) and old_value.get("expires_at") is None):
+            # A manually granted, permanent Premium remains permanent.
+            pass
+        else:
+            existing_expiry = old_value if isinstance(old_value, int) and not isinstance(old_value, bool) else 0
+            if isinstance(old_value, dict):
+                existing_expiry = int(old_value.get("expires_at") or 0)
+            users[user_key] = max(now, existing_expiry) + int(record["days"]) * 86400
+        record["redeemed_at"] = now
+        record["redeemed_by"] = user_key
+        keys[digest] = record
+        # Write entitlement first. If that fails, the key remains unredeemed.
+        if not _write_json(PREMIUM_USERS_FILE, users):
+            return False
+        if not _write_json(PREMIUM_KEYS_FILE, keys):
+            # Fail closed: the entitlement is granted, but log for manual reconciliation.
+            print("ALERTA: Premium se activó, pero no se pudo marcar la key como usada.")
+            return False
+    return True
+
+
+def is_premium_manager(user_id):
+    configured_ids = {
+        value.strip()
+        for value in os.getenv("PREMIUM_MANAGER_IDS", "").split(",")
+        if value.strip().isdecimal()
+    }
+    return str(user_id) in configured_ids
 
 
 def _serialize_overwrites(overwrites):
@@ -95,11 +176,7 @@ async def save_server_snapshot(guild):
         "guild_name": guild.name,
         "created_at": int(time.time()),
         "categories": [
-            {
-                "name": category.name,
-                "position": category.position,
-                "overwrites": _serialize_overwrites(category.overwrites),
-            }
+            {"name": category.name, "position": category.position, "overwrites": _serialize_overwrites(category.overwrites)}
             for category in guild.categories
         ],
         "channels": [],
@@ -108,9 +185,10 @@ async def save_server_snapshot(guild):
         data = _channel_snapshot(channel)
         if data is not None:
             snapshot["channels"].append(data)
-    backups = _read_json(BACKUP_FILE, {})
-    backups[str(guild.id)] = snapshot
-    _write_json(BACKUP_FILE, backups)
+    with _STORAGE_LOCK:
+        backups = _read_json(BACKUP_FILE, {})
+        backups[str(guild.id)] = snapshot
+        _write_json(BACKUP_FILE, backups)
     return snapshot
 
 
@@ -133,8 +211,7 @@ async def restore_server_snapshot(guild, snapshot=None):
             continue
         try:
             categories[item["name"]] = await guild.create_category(
-                item["name"],
-                overwrites=_restore_overwrites(guild, item.get("overwrites")),
+                item["name"], overwrites=_restore_overwrites(guild, item.get("overwrites")),
                 reason="Restauración de copia de seguridad premium",
             )
         except (discord.Forbidden, discord.HTTPException) as error:
@@ -149,7 +226,7 @@ async def restore_server_snapshot(guild, snapshot=None):
         existing = next((
             channel for channel in guild.channels
             if channel.name == item["name"]
-            and ((channel.category.name if channel.category else None) == category_name)
+            and (channel.category.name if channel.category else None) == category_name
             and ((item["type"] == "text" and isinstance(channel, discord.TextChannel))
                  or (item["type"] == "voice" and isinstance(channel, discord.VoiceChannel)))
         ), None)
@@ -160,16 +237,13 @@ async def restore_server_snapshot(guild, snapshot=None):
             if item["type"] == "text":
                 await guild.create_text_channel(
                     item["name"], category=category, topic=item.get("topic"),
-                    nsfw=bool(item.get("nsfw", False)),
-                    slowmode_delay=int(item.get("slowmode_delay", 0)),
-                    overwrites=overwrites,
-                    reason="Restauración de copia de seguridad premium",
+                    nsfw=bool(item.get("nsfw", False)), slowmode_delay=int(item.get("slowmode_delay", 0)),
+                    overwrites=overwrites, reason="Restauración de copia de seguridad premium",
                 )
             elif item["type"] == "voice":
                 await guild.create_voice_channel(
-                    item["name"], category=category,
-                    bitrate=item.get("bitrate"), user_limit=int(item.get("user_limit", 0)),
-                    overwrites=overwrites,
+                    item["name"], category=category, bitrate=item.get("bitrate"),
+                    user_limit=int(item.get("user_limit", 0)), overwrites=overwrites,
                     reason="Restauración de copia de seguridad premium",
                 )
             created += 1
@@ -202,15 +276,10 @@ class BackupRestoreView(discord.ui.View):
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 member = None
         if member is None or not (member.id == guild.owner_id or member.guild_permissions.administrator):
-            await interaction.response.send_message(
-                "Debes ser propietario o administrador de ese servidor.",
-                ephemeral=interaction.guild is not None,
-            )
+            await interaction.response.send_message("Debes ser propietario o administrador de ese servidor.", ephemeral=interaction.guild is not None)
             return
         if not is_premium_user(member.id):
-            await interaction.response.send_message(
-                "Tu cuenta no tiene Premium activo.", ephemeral=interaction.guild is not None,
-            )
+            await interaction.response.send_message("Tu cuenta no tiene Premium activo.", ephemeral=interaction.guild is not None)
             return
         await interaction.response.defer(ephemeral=interaction.guild is not None)
         success, message = await restore_server_snapshot(guild)
@@ -219,12 +288,10 @@ class BackupRestoreView(discord.ui.View):
 
 async def _premium_admin_members(guild):
     for user_id in premium_user_ids():
-        member = guild.get_member(int(user_id))
-        if member is None:
-            try:
-                member = await guild.fetch_member(int(user_id))
-            except (discord.NotFound, discord.Forbidden, discord.HTTPException, ValueError):
-                continue
+        try:
+            member = guild.get_member(int(user_id)) or await guild.fetch_member(int(user_id))
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException, ValueError):
+            continue
         if member.id == guild.owner_id or member.guild_permissions.administrator:
             yield member
 
@@ -235,12 +302,11 @@ async def _backup_and_notify(client):
         if not recipients:
             continue
         await save_server_snapshot(guild)
-        view = BackupRestoreView(guild.id)
         for member in recipients:
             try:
                 await member.send(
                     f"**{guild.name}**\nCopia de seguridad guardada. Cuando quieras, pulsa el botón de abajo para restaurar la estructura del servidor.",
-                    view=view,
+                    view=BackupRestoreView(guild.id),
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
             except (discord.Forbidden, discord.HTTPException) as error:
