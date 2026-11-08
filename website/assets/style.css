@@ -1,4 +1,141 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
-:root{color-scheme:dark;--bg:#050505;--panel:#0d0d0f;--panel2:#121215;--line:#252529;--text:#f7f7f8;--muted:#a1a1aa;--glow:rgba(255,255,255,.17);--green:#a6f3c2}*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:95px}body{margin:0;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;overflow-x:hidden}a{color:inherit;text-decoration:none}.glow{position:absolute;width:420px;height:420px;border-radius:50%;filter:blur(130px);background:var(--glow);pointer-events:none;z-index:-1}.glow-a{top:80px;left:-200px}.glow-b{top:520px;right:-240px;opacity:.5}.topbar{height:76px;padding:0 clamp(20px,5vw,76px);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.07);position:sticky;top:0;background:rgba(5,5,5,.82);backdrop-filter:blur(18px);z-index:10}.brand{display:flex;gap:11px;align-items:center;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;letter-spacing:1.5px;white-space:nowrap}.brand b{color:#aaa}.brand-mark{width:34px;height:34px;display:grid;place-items:center;border:1px solid #fff;border-radius:10px;font-size:18px;box-shadow:0 0 18px rgba(255,255,255,.22)}.nav{display:flex;gap:27px}.nav a{font-size:13px;color:#b8b8bf;transition:.2s}.nav a:hover,.nav a.active{color:#fff;text-shadow:0 0 15px white}.button{border:1px solid #f5f5f5;color:#070707;background:#fff;border-radius:10px;padding:14px 19px;font-weight:700;font-size:13px;display:inline-flex;align-items:center;justify-content:center;gap:12px;transition:.2s;cursor:pointer;box-shadow:0 0 24px rgba(255,255,255,.12)}.button:hover{transform:translateY(-2px);box-shadow:0 0 30px rgba(255,255,255,.27)}.button-small{padding:10px 13px;font-size:12px}.button-ghost{background:transparent;color:#fff;box-shadow:none;border-color:#39393e}.button-ghost:hover{border-color:#fff;box-shadow:0 0 20px rgba(255,255,255,.12)}.menu-toggle{display:none;background:none;border:0;padding:8px}.menu-toggle i{display:block;width:23px;height:2px;background:#fff;margin:5px}.section{max-width:1180px;margin:0 auto;padding:100px 28px}.hero{min-height:570px;display:grid;grid-template-columns:1.15fr .85fr;align-items:center;gap:70px;padding-top:90px}.eyebrow{font-size:10px;letter-spacing:2px;color:#bbb;font-weight:700}.live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green);margin-right:7px}.hero h1,.section-title h2,.invite-box h2{font-family:'Space Grotesk',sans-serif;letter-spacing:-2px}.hero h1{font-size:clamp(54px,7vw,86px);line-height:.98;margin:24px 0}.shine{color:#fff;text-shadow:0 0 28px rgba(255,255,255,.32)}.hero-copy>p{max-width:490px;color:var(--muted);font-size:17px;line-height:1.7}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}.trust{display:flex;align-items:center;gap:12px;margin-top:32px;color:#aaa;font-size:12px}.avatar-stack{display:flex}.avatar-stack i{width:25px;height:25px;border:1px solid #080808;border-radius:50%;background:#27272c;display:grid;place-items:center;font-style:normal;font-size:10px;margin-left:-5px}.avatar-stack i:first-child{margin-left:0;background:#eee;color:#111}.hero-card{padding:24px;border:1px solid #29292e;border-radius:18px;background:linear-gradient(145deg,rgba(255,255,255,.08),rgba(255,255,255,.015));box-shadow:0 20px 70px #000,0 0 35px rgba(255,255,255,.06);min-height:350px}.card-head,.card-foot{display:flex;align-items:center;justify-content:space-between;color:#92929a;font-size:9px;letter-spacing:1.3px}.window-dots{color:#777;letter-spacing:2px}.status-pill{border:1px solid #456555;color:var(--green);padding:5px 8px;border-radius:20px;font-size:8px}.shield{margin:38px auto 18px;width:86px;height:86px;border:1px solid #777;border-radius:26px;display:grid;place-items:center;font-size:48px;box-shadow:0 0 45px rgba(255,255,255,.15);text-shadow:0 0 20px white}.hero-card h3{text-align:center;font-family:'Space Grotesk';font-size:21px}.hero-card>p{text-align:center;color:#aaa;font-size:12px}.scan{height:4px;background:#29292e;border-radius:5px;margin:35px 0 24px;overflow:hidden}.scan span{display:block;width:60%;height:100%;background:#fff;box-shadow:0 0 15px #fff}.card-foot strong{color:#ddd;font-size:10px}.section-title{text-align:center;margin:0 auto 38px;max-width:650px}.section-title h2,.invite-box h2{font-size:clamp(32px,4vw,47px);margin:13px 0}.section-title p,.invite-box p{color:var(--muted);line-height:1.7}.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.stat-card,.feature-card,.plan-card,.profile-card{background:linear-gradient(145deg,#111113,#09090a);border:1px solid var(--line);border-radius:15px;padding:23px}.stat-card>span,.stat-card small{display:block;color:#a1a1aa;font-size:12px}.stat-card strong{display:block;font:600 27px 'Space Grotesk';margin:15px 0 9px}.stat-live{font-size:19px!important;color:var(--green)}.feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.feature-card{min-height:175px}.feature-icon{font-size:23px}.feature-card h3{font:600 17px 'Space Grotesk';margin:17px 0 8px}.feature-card p{color:#aaa;font-size:12px;line-height:1.6;margin:0}.invite-box{display:grid;grid-template-columns:1fr .8fr;gap:45px;padding:38px;border:1px solid #343438;border-radius:19px;background:radial-gradient(ellipse at 100% 0,rgba(255,255,255,.1),transparent 40%),#0c0c0e}.invite-box h2{margin-bottom:10px}.invite-action{display:flex;flex-direction:column;gap:12px;justify-content:center}.invite-action select,.redeem input{background:#080809;border:1px solid #35353a;color:#eee;border-radius:9px;padding:13px;font:inherit}.invite-action small{color:#85858c;font-size:10px}.plans-grid{display:grid;grid-template-columns:1fr 1fr;gap:17px;max-width:850px;margin:auto}.plan-card{padding:27px}.premium-plan{border-color:#777;box-shadow:0 0 30px rgba(255,255,255,.07)}.plan-label{font-size:9px;letter-spacing:2px;color:#bbb}.plan-card h3{font:600 27px 'Space Grotesk';margin:17px 0 5px}.price{font:700 33px 'Space Grotesk';margin:9px 0}.price small{font:400 12px 'DM Sans';color:#999}.plan-card>p:not(.price){color:#aaa;font-size:12px}.plan-card ul{list-style:none;padding:0;color:#ddd;font-size:12px;line-height:2.5;margin:20px 0}.plan-card li:before{content:'✓';color:var(--green);margin-right:9px}.full{width:100%}.redeem{border-top:1px solid #29292d;margin-top:20px;padding-top:17px}.redeem label{display:block;font-size:11px;color:#bbb;margin-bottom:9px}.redeem-row{display:flex;gap:8px}.redeem-row input{min-width:0;flex:1}.redeem-row button{white-space:nowrap}.redeem p{min-height:16px;font-size:11px;color:var(--green)}.fine-print{text-align:center;color:#777;font-size:10px;margin-top:18px}.profile-card{display:flex;align-items:center;gap:17px;max-width:760px;margin:auto}.profile-avatar{width:55px;height:55px;border-radius:50%;object-fit:cover;border:1px solid #555}.placeholder{display:grid;place-items:center;background:#222;font-size:22px}.profile-details{flex:1;display:grid;gap:5px}.profile-details span{color:#999;font-size:11px}.account-actions{max-width:760px;margin:12px auto}.logout{color:#aaa;font-size:12px}.toast{position:fixed;bottom:22px;left:50%;transform:translate(-50%,20px);opacity:0;background:#eee;color:#111;padding:12px 17px;border-radius:10px;font-size:12px;transition:.25s;pointer-events:none;z-index:30}.toast.show{opacity:1;transform:translate(-50%,0)}footer{border-top:1px solid #242428;padding:24px clamp(20px,5vw,76px);display:flex;justify-content:space-between;align-items:center;color:#999;font-size:11px}.nav.hidden{display:none}
-@media(max-width:850px){.nav{gap:13px}.nav a{font-size:11px}.hero{gap:30px}.topbar{padding:0 20px}.brand{font-size:11px}}
-@media(max-width:680px){.topbar{height:65px}.menu-toggle{display:block;margin-left:auto;margin-right:10px}.nav{display:none;position:absolute;top:64px;left:0;right:0;background:#09090a;border-bottom:1px solid #333;padding:15px 22px 22px;flex-direction:column;gap:0}.nav.open{display:flex}.nav a{padding:12px;font-size:14px}.topbar>.button{font-size:10px;padding:9px}.brand{font-size:9px;letter-spacing:1px;gap:7px}.brand-mark{width:29px;height:29px}.hero{grid-template-columns:1fr;padding-top:65px;min-height:auto}.hero-card{max-width:460px;width:100%;margin:auto}.section{padding:70px 20px}.stats-grid,.feature-grid,.plans-grid{grid-template-columns:1fr}.invite-box{grid-template-columns:1fr;padding:25px;gap:15px}.profile-card{flex-wrap:wrap}.profile-card>.button{width:100%}footer{flex-wrap:wrap;gap:14px}.section-title h2{letter-spacing:-1px}}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#050505">
+  <meta name="description" content="Vantarmor Commands: protección y herramientas para tu comunidad de Discord.">
+  <title>Vantarmor Commands</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="glow glow-a"></div><div class="glow glow-b"></div>
+  <header class="topbar">
+    <a class="brand" href="#inicio" aria-label="Vantarmor inicio"><span class="brand-mark">V</span><span>VANTARMOR <b>COMMANDS</b></span></a>
+    <button id="menu-toggle" class="menu-toggle" aria-label="Abrir menú" aria-expanded="false"><i></i><i></i><i></i></button>
+    <nav id="nav" class="nav">
+      <a href="#inicio">Inicio</a>
+      <a href="#estado">Estado</a>
+      <a href="#funciones">Funciones</a>
+      <a href="#invitar">Invita bot</a>
+      <a href="#planes">Planes</a>
+      <a href="#ajustes">Ajustes</a>
+    </nav>
+    <a id="login-top" class="button button-small" href="/auth/discord">Verificar con Discord</a>
+  </header>
+  <main>
+    <section id="inicio" class="hero section">
+      <div class="hero-copy">
+        <span class="eyebrow"><span class="live-dot"></span> SEGURIDAD PARA TU COMUNIDAD</span>
+        <h1>Tu servidor.<br><span class="shine">Bajo control.</span></h1>
+        <p>Herramientas de moderación, protección y gestión para que tu comunidad crezca con confianza.</p>
+        <div class="actions">
+          <a class="button" href="/auth/discord">Continuar con Discord <span>↗</span></a>
+          <a class="button button-ghost" href="#funciones">Explorar funciones</a>
+        </div>
+        <div class="trust"><span class="avatar-stack"><i>V</i><i>✓</i><i>+</i></span><span>Protección y herramientas en un solo bot</span></div>
+      </div>
+      <div class="hero-card">
+        <div class="card-head"><span class="window-dots">● ● ●</span><span>VANTARMOR / PANEL</span><span class="status-pill">ACTIVO</span></div>
+        <div class="shield">⌑</div>
+        <h3>Protección inteligente</h3>
+        <p>Moderación, registros y copias de seguridad de estructura.</p>
+        <div class="scan"><span></span></div>
+        <div class="card-foot"><span>ESTADO DEL SISTEMA</span><strong><i class="live-dot"></i> Operativo</strong></div>
+      </div>
+    </section>
+
+    <section id="estado" class="section">
+      <div class="section-title"><span class="eyebrow">EN TIEMPO REAL</span><h2>Estado del servicio</h2><p>Información pública de Vantarmor Commands.</p></div>
+      <div class="stats-grid">
+        <article class="stat-card"><span>Protección</span><strong class="stat-live"><i class="live-dot"></i> Operativa</strong><small>El bot responde con normalidad</small></article>
+        <article class="stat-card"><span>Servidores conectados</span><strong id="server-count">—</strong><small>Instalaciones del bot</small></article>
+        <article class="stat-card"><span>Miembros de la web</span><strong id="web-count">—</strong><small>Cuentas verificadas con Discord</small></article>
+      </div>
+    </section>
+
+    <section id="funciones" class="section">
+      <div class="section-title"><span class="eyebrow">QUÉ INCLUYE</span><h2>Herramientas para moderar mejor</h2><p>Funciones claras para mantener tu comunidad organizada y segura.</p></div>
+      <div class="feature-grid" id="features"></div>
+    </section>
+
+    <section id="invitar" class="section invite-section">
+      <div class="invite-box">
+        <div>
+          <span class="eyebrow">LISTO PARA TU COMUNIDAD</span>
+          <h2>Invita Vantarmor</h2>
+          <p>Elige un servidor donde seas propietario o administrador. Discord te pedirá confirmar la instalación y los permisos del bot.</p>
+        </div>
+        <div class="invite-action">
+          <select id="guild-select" aria-label="Elige un servidor">
+            <option value="">Inicia sesión para cargar tus servidores</option>
+          </select>
+          <a id="invite-button" class="button" href="/auth/discord">Verificar con Discord</a>
+          <small>La autorización y los permisos se confirman en Discord.</small>
+        </div>
+      </div>
+    </section>
+
+    <section id="planes" class="section">
+      <div class="section-title"><span class="eyebrow">PLANES</span><h2>Empieza gratis. Mejora cuando quieras.</h2><p>Premium se vincula a tu cuenta de Discord.</p></div>
+      <div class="plans-grid">
+        <article class="plan-card">
+          <span class="plan-label">FREE</span>
+          <h3>Gratis</h3>
+          <p class="price">$0 <small>/ siempre</small></p>
+          <p>Herramientas esenciales para empezar.</p>
+          <ul>
+            <li>Comandos Free disponibles</li>
+            <li>Moderación y utilidades básicas</li>
+            <li>Sin costo</li>
+          </ul>
+          <a href="#funciones" class="button button-ghost full">Ver comandos Free</a>
+        </article>
+
+        <article class="plan-card premium-plan">
+          <span class="plan-label">MÁS PROTECCIÓN</span>
+          <h3>Premium</h3>
+          <p class="price">$3 <small>/ acceso</small></p>
+          <p>Funciones adicionales para administradores Premium.</p>
+          <ul>
+            <li>Incluye los comandos Free</li>
+            <li>/seguridad-copia y restauración segura</li>
+            <li>Copia solo del servidor donde se ejecuta</li>
+          </ul>
+          <a class="button full" href="https://discord.gg/YD7uY3AHz" target="_blank" rel="noopener">Comprar / consultar por Discord ↗</a>
+          <div class="redeem">
+            <label for="premium-key">¿Tienes una key? Reclámala aquí</label>
+            <div class="redeem-row">
+              <input id="premium-key" type="text" placeholder="VANT-…" autocomplete="off" maxlength="160">
+              <button id="redeem-button" class="button button-small">Reclamar</button>
+            </div>
+            <p id="redeem-message" role="status"></p>
+          </div>
+        </article>
+      </div>
+      <p class="fine-print">El precio y la duración final se confirman en Discord. No introduzcas keys en páginas que no sean este dominio.</p>
+    </section>
+
+    <section id="ajustes" class="section settings-section">
+      <div class="section-title"><span class="eyebrow">TU CUENTA</span><h2>Ajustes</h2><p>Perfil vinculado de forma segura con Discord.</p></div>
+      <article class="profile-card" id="profile-card">
+        <div class="profile-avatar placeholder">?</div>
+        <div class="profile-details">
+          <strong>Inicia sesión para ver tu perfil</strong>
+          <span>Tu nombre y avatar de Discord aparecerán aquí.</span>
+        </div>
+        <a class="button button-small" href="/auth/discord">Iniciar sesión</a>
+      </article>
+      <div id="account-actions" class="account-actions"></div>
+    </section>
+  </main>
+
+  <footer>
+    <a class="brand" href="#inicio"><span class="brand-mark">V</span><span>VANTARMOR <b>COMMANDS</b></span></a>
+    <span>Hecho para comunidades más seguras.</span>
+    <a href="https://discord.gg/YD7uY3AHz" target="_blank" rel="noopener">Soporte en Discord ↗</a>
+  </footer>
+  <div id="toast" class="toast" role="status"></div>
+</body>
+</html>

@@ -1,212 +1,103 @@
-import json
-import os
-import secrets
-import threading
-import time
-from http.cookies import SimpleCookie
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlparse, parse_qs
-from urllib.request import Request, urlopen
 
-from premium_store import is_premium_user, public_stats, redeem_premium_key, register_web_user
+IMPORTS = '''from premium_backup_system import (
+    BackupRestoreView,
+    is_premium_user,
+    premium_backup_scheduler,
+    save_server_snapshot,
+)
+from premium_store import (
+    delete_premium_key,
+    generate_premium_key,
+    is_premium_manager,
+)
+'''
 
-ROOT = Path(__file__).resolve().parent
-WEB_DIR = ROOT / "website"
-API = "https://discord.com/api/v10"
-SESSIONS = {}
-LOCK = threading.RLock()
-
-
-def oauth_config():
-    return {
-        "client_id": os.getenv("DISCORD_CLIENT_ID", "").strip(),
-        "client_secret": os.getenv("DISCORD_CLIENT_SECRET", "").strip(),
-        "redirect_uri": os.getenv("DISCORD_REDIRECT_URI", "").strip(),
-    }
-
-
-def discord_json(path, token=None, data=None, basic=None):
-    headers = {"Accept": "application/json", "User-Agent": "Vantarmor-Commands/1.0"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    if basic:
-        headers["Authorization"] = f"Basic {basic}"
-    if data is not None:
-        body = urlencode(data).encode()
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
-        req = Request(API + path, data=body, headers=headers, method="POST")
-    else:
-        req = Request(API + path, headers=headers)
-    with urlopen(req, timeout=15) as response:
-        return json.loads(response.read().decode("utf-8"))
-
-
-class Handler(SimpleHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(WEB_DIR), **kwargs)
-
-    def log_message(self, fmt, *args):
+GENERATE_KEY_COMMAND = '''@tree.command(name="premium-generar-key", description="Genera una key Premium de uso único", guild=GUILD)
+@app_commands.default_permissions(administrator=True)
+@app_commands.describe(dias="Cantidad de días de Premium")
+async def premium_generar_key(interaction: discord.Interaction, dias: app_commands.Range[int, 1, 3650]):
+    if not is_premium_manager(interaction.user.id):
+        await interaction.response.send_message("No tienes permisos para generar keys Premium.", ephemeral=True)
         return
-
-    def json(self, data, status=200):
-        body = json.dumps(data, ensure_ascii=False).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' https://cdn.discordapp.com https://*.discordapp.net data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def text(self, message, status=400):
-        self.json({"error": message}, status)
-
-    def cookie(self, name):
-        jar = SimpleCookie()
-        try:
-            jar.load(self.headers.get("Cookie", ""))
-            item = jar.get(name)
-            return item.value if item else None
-        except (TypeError, ValueError):
-            return None
-
-    @staticmethod
-    def set_cookie(name, value, max_age):
-        secure = "; Secure" if os.getenv("RAILWAY_PUBLIC_DOMAIN") or os.getenv("PUBLIC_BASE_URL", "").startswith("https://") else ""
-        return f"{name}={value}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Lax{secure}"
-
-    def session(self):
-        sid = self.cookie("vantarmor_session")
-        with LOCK:
-            session = SESSIONS.get(sid) if sid else None
-            if session and session["expires"] > time.time():
-                return session
-            if sid:
-                SESSIONS.pop(sid, None)
-        return None
-
-    def do_GET(self):
-        path = urlparse(self.path).path
-        if path == "/auth/discord":
-            cfg = oauth_config()
-            if not all(cfg.values()):
-                return self.text("Configura DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET y DISCORD_REDIRECT_URI en Railway.", 503)
-            state = secrets.token_urlsafe(32)
-            query = urlencode({"client_id": cfg["client_id"], "response_type": "code", "redirect_uri": cfg["redirect_uri"], "scope": "identify guilds", "state": state})
-            self.send_response(302)
-            self.send_header("Location", "https://discord.com/oauth2/authorize?" + query)
-            self.send_header("Set-Cookie", self.set_cookie("vantarmor_oauth_state", state, 600))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            return
-        if path == "/auth/callback":
-            cfg = oauth_config()
-            query = parse_qs(urlparse(self.path).query)
-            state = query.get("state", [""])[0]
-            if not state or not secrets.compare_digest(state, self.cookie("vantarmor_oauth_state") or ""):
-                return self.text("Falló la verificación de inicio de sesión. Inténtalo otra vez.", 400)
-            code = query.get("code", [""])[0]
-            if not code:
-                return self.text("Discord no autorizó el acceso.", 400)
-            try:
-                import base64
-                credentials = base64.b64encode(f"{cfg['client_id']}:{cfg['client_secret']}".encode()).decode()
-                token_data = discord_json("/oauth2/token", data={"grant_type": "authorization_code", "code": code, "redirect_uri": cfg["redirect_uri"]}, basic=credentials)
-                access_token = token_data["access_token"]
-                user = discord_json("/users/@me", token=access_token)
-            except (HTTPError, URLError, KeyError, ValueError, OSError) as exc:
-                print(f"Discord OAuth falló: {type(exc).__name__}")
-                return self.text("No se pudo completar el inicio de sesión con Discord. Revisa las variables OAuth y la URL de retorno.", 502)
-            sid = secrets.token_urlsafe(32)
-            csrf = secrets.token_urlsafe(32)
-            register_web_user(user["id"])
-            with LOCK:
-                SESSIONS[sid] = {"user": user, "csrf": csrf, "expires": time.time() + min(int(token_data.get("expires_in", 3600)), 86400)}
-            self.send_response(302)
-            self.send_header("Location", "/?login=ok")
-            self.send_header("Set-Cookie", self.set_cookie("vantarmor_session", sid, 86400))
-            self.send_header("Set-Cookie", self.set_cookie("vantarmor_oauth_state", "", 0))
-            self.end_headers()
-            return
-        if path == "/auth/logout":
-            sid = self.cookie("vantarmor_session")
-            with LOCK:
-                SESSIONS.pop(sid, None)
-            self.send_response(302)
-            self.send_header("Location", "/")
-            self.send_header("Set-Cookie", self.set_cookie("vantarmor_session", "", 0))
-            self.end_headers()
-            return
-        if path == "/api/me":
-            session = self.session()
-            if not session:
-                return self.json({"authenticated": False}, 401)
-            user = session["user"]
-            avatar_hash = user.get("avatar")
-            avatar = f"https://cdn.discordapp.com/avatars/{user['id']}/{avatar_hash}.png?size=256" if avatar_hash else f"https://cdn.discordapp.com/embed/avatars/{int(user['id']) % 6}.png"
-            return self.json({"authenticated": True, "user": {"id": user["id"], "name": user.get("global_name") or user.get("username"), "username": user.get("username"), "avatar": avatar}, "premium": is_premium_user(user["id"]), "csrf": session["csrf"]})
-        if path == "/api/stats":
-            return self.json(public_stats())
-        if path == "/api/guilds":
-            session = self.session()
-            if not session:
-                return self.json({"error": "inicia_sesion"}, 401)
-            try:
-                guilds = discord_json("/users/@me/guilds", token=session["access_token"]) if session.get("access_token") else []
-            except Exception:
-                guilds = []
-            manageable = [g for g in guilds if g.get("owner") or int(g.get("permissions", "0")) & 0x8]
-            return self.json({"guilds": [{"id": g["id"], "name": g["name"]} for g in manageable]})
-        if path == "/config.json":
-            cfg = oauth_config()
-            return self.json({"auth_enabled": bool(all(cfg.values())), "bot_client_id": cfg["client_id"], "invite_url": os.getenv("BOT_INVITE_URL", "")})
-        if path == "/" or path == "/index.html":
-            return super().do_GET()
-        if path.startswith("/assets/"):
-            return super().do_GET()
-        if not self.session():
-            return self.send_response(302) or self.send_header("Location", "/auth/discord")
-        return super().do_GET()
-
-    def do_POST(self):
-        if urlparse(self.path).path != "/api/redeem":
-            return self.text("No encontrado.", 404)
-        session = self.session()
-        if not session:
-            return self.text("Inicia sesión con Discord primero.", 401)
-        if not secrets.compare_digest(self.headers.get("X-CSRF-Token", ""), session["csrf"]):
-            return self.text("Verificación de seguridad fallida. Recarga e inténtalo otra vez.", 403)
-        try:
-            length = min(int(self.headers.get("Content-Length", "0")), 4096)
-            data = json.loads(self.rfile.read(length))
-            key = str(data.get("key", "")).strip()
-        except (ValueError, json.JSONDecodeError):
-            return self.text("Solicitud no válida.", 400)
-        if not key or len(key) > 160:
-            return self.text("Introduce una key válida.", 400)
-        user_id = session["user"]["id"]
-        if is_premium_user(user_id):
-            return self.json({"ok": False, "message": "Tu cuenta ya tiene Premium activo."}, 409)
-        try:
-            success = redeem_premium_key(key, user_id)
-        except OSError as exc:
-            print(f"No se pudo persistir el reclamo Premium: {type(exc).__name__}")
-            return self.text("No se pudo guardar el plan. Inténtalo más tarde.", 500)
-        if not success:
-            return self.json({"ok": False, "message": "La key no existe, ya fue usada o no es válida."}, 400)
-        return self.json({"ok": True, "message": "¡Premium activado en tu cuenta!"})
+    try:
+        key = generate_premium_key(dias, interaction.user.id)
+    except (OSError, ValueError) as error:
+        await interaction.response.send_message(f"No pude generar la key: {error}", ephemeral=True)
+        return
+    await interaction.response.send_message(
+        f"🔑 Key Premium creada ({dias} días):\n```{key}```",
+        ephemeral=True,
+    )
 
 
-def start_website():
-    if not (WEB_DIR / "index.html").is_file():
-        print("No existe website/index.html; omito el servidor web.")
-        return None
-    port = int(os.getenv("PORT", "8080"))
-    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
-    thread = threading.Thread(target=server.serve_forever, name="vantarmor-web", daemon=True)
-    thread.start()
-    print(f"Web de Vantarmor escuchando en el puerto {port}")
-    return server
+'''
+
+DELETE_KEY_COMMAND = '''@tree.command(name="premium-key-delete", description="Elimina una key Premium generada", guild=GUILD)
+@app_commands.default_permissions(administrator=True)
+@app_commands.describe(key="Key Premium a eliminar")
+async def premium_key_delete(interaction: discord.Interaction, key: str):
+    if not is_premium_manager(interaction.user.id):
+        await interaction.response.send_message("No tienes permisos para eliminar keys Premium.", ephemeral=True)
+        return
+    if not delete_premium_key(key):
+        await interaction.response.send_message("No existe esa key o ya fue eliminada.", ephemeral=True)
+        return
+    await interaction.response.send_message("✅ La key Premium ha sido eliminada y su acceso asociado fue revocado.", ephemeral=True)
+
+
+'''
+
+BACKUP_COMMAND = '''@tree.command(name="seguridad-copia", description="Guarda una copia de la estructura de este servidor", guild=GUILD)
+@app_commands.default_permissions(administrator=True)
+async def seguridad_copia(interaction: discord.Interaction):
+    guild, member = interaction.guild, interaction.user
+    if guild is None or not isinstance(member, discord.Member):
+        await interaction.response.send_message("Este comando solo funciona en un servidor.", ephemeral=True)
+        return
+    if not is_premium_user(member.id):
+        await interaction.response.send_message("Tu cuenta no tiene Premium activo.", ephemeral=True)
+        return
+    if not (member.id == guild.owner_id or member.guild_permissions.administrator):
+        await interaction.response.send_message("Necesitas ser propietario o administrador del servidor.", ephemeral=True)
+        return
+    await save_server_snapshot(guild)
+    await interaction.response.send_message(
+        f"✅ Copia guardada únicamente para **{guild.name}**. La restauración recrea categorías y canales que falten y no elimina los existentes.",
+        view=BackupRestoreView(guild.id),
+        ephemeral=True,
+    )
+
+
+'''
+
+
+def patch_app_file(app_file: Path):
+    source = app_file.read_text(encoding="utf-8")
+    if "from premium_store import (" not in source:
+        anchor = "from discord import app_commands\n"
+        if anchor not in source:
+            raise RuntimeError("No encontré el punto de importación en app.py.")
+        source = source.replace(anchor, anchor + IMPORTS, 1)
+    anchor = '@tree.command(name="ping", description="Comprueba si el bot responde", guild=GUILD)\n'
+    for block_name, block in (("premium-generar-key", GENERATE_KEY_COMMAND), ("premium-key-delete", DELETE_KEY_COMMAND), ("seguridad-copia", BACKUP_COMMAND)):
+        if f'name="{block_name}"' not in source:
+            if anchor not in source:
+                raise RuntimeError(f"No encontré el lugar para registrar /{block_name}.")
+            source = source.replace(anchor, block + anchor, 1)
+    ready_anchor = '    print(f"Conectado como {client.user}")\n'
+    ready_code = '''    if not getattr(client, "premium_backup_views_registered", False):
+        for server in client.guilds:
+            client.add_view(BackupRestoreView(server.id))
+        client.premium_backup_views_registered = True
+    backup_task = getattr(client, "premium_backup_task", None)
+    if backup_task is None or backup_task.done():
+        client.premium_backup_task = asyncio.create_task(premium_backup_scheduler(client))
+'''
+    if "premium_backup_views_registered" not in source:
+        if ready_anchor not in source:
+            raise RuntimeError("No encontré el inicio de on_ready en app.py.")
+        source = source.replace(ready_anchor, ready_anchor + ready_code, 1)
+    app_file.write_text(source, encoding="utf-8")
+
+__all__ = ["patch_app_file"]
