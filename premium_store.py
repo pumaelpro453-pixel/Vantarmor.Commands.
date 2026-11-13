@@ -6,8 +6,6 @@ import threading
 import time
 from pathlib import Path
 
-# Keep the store alongside premium_backup_system.py: the bot and web process must
-# read and write the same entitlement/key files on Railway.
 DATA_DIR = Path(os.getenv("VANTARMOR_DATA_DIR", "."))
 PREMIUM_USERS_FILE = DATA_DIR / "premium_users.json"
 PREMIUM_KEYS_FILE = DATA_DIR / "premium_keys.json"
@@ -35,28 +33,76 @@ def _key_hash(key):
 
 
 def is_premium_manager(user_id):
-    configured = {item.strip() for item in os.getenv("PREMIUM_MANAGER_IDS", "").split(",") if item.strip().isdecimal()}
-    return str(user_id) in configured
+    managers = {item.strip() for item in os.getenv("PREMIUM_MANAGER_IDS", "").split(",") if item.strip().isdecimal()}
+    return str(user_id) in managers
 
 
-def is_premium_user(user_id):
+def premium_expiry(user_id):
     users = _read(PREMIUM_USERS_FILE, {})
     entry = users.get(str(user_id))
-    now = int(time.time())
     if entry is True:
-        return True
+        return None
     if isinstance(entry, int) and not isinstance(entry, bool):
-        return entry > now
+        return entry if entry > int(time.time()) else 0
     if isinstance(entry, dict):
         expiry = entry.get("expires_at")
         if expiry is None:
-            return True
+            return None
         try:
-            return int(expiry) > now
+            expiry = int(expiry)
+            return expiry if expiry > int(time.time()) else 0
         except (TypeError, ValueError):
-            return False
-    env_ids = {item.strip() for item in os.getenv("PREMIUM_USER_IDS", "").split(",") if item.strip().isdecimal()}
-    return str(user_id) in env_ids
+            return 0
+    env_ids = {item.strip() for item in os.getenv("PREMIUM_USER_IDS", "").split(",") if item.strip()}
+    return None if str(user_id) in env_ids else 0
+
+
+def is_premium_user(user_id):
+    expiry = premium_expiry(user_id)
+    return expiry is None or expiry > int(time.time())
+
+
+def set_premium_user(user_id, enabled=True, *, expires_at=None, source="web_admin"):
+    with _lock:
+        users = _read(PREMIUM_USERS_FILE, {})
+        uid = str(user_id)
+        if enabled:
+            users[uid] = {"expires_at": None if expires_at is None else int(expires_at), "source": source}
+        else:
+            users.pop(uid, None)
+        _write(PREMIUM_USERS_FILE, users)
+        return users.get(uid)
+
+
+def grant_registered_user(user_id, *, days=None):
+    uid = str(user_id)
+    if not uid.isdecimal():
+        raise ValueError("El ID de usuario no es válido.")
+    stats = _read(WEB_STATS_FILE, {"users": []})
+    if uid not in {str(value) for value in stats.get("users", [])}:
+        raise ValueError("Solo puedes dar Premium a una persona que ya se haya registrado en la web.")
+    if days is not None and not 1 <= int(days) <= 3650:
+        raise ValueError("La duración debe estar entre 1 y 3650 días.")
+    expiry = None if days is None else int(time.time()) + int(days) * 86400
+    set_premium_user(uid, True, expires_at=expiry, source="web_admin")
+    return {"user_id": uid, "expires_at": expiry}
+
+
+def revoke_user_premium(user_id):
+    uid = str(user_id)
+    if not uid.isdecimal():
+        raise ValueError("El ID de usuario no es válido.")
+    stats = _read(WEB_STATS_FILE, {"users": []})
+    if uid not in {str(value) for value in stats.get("users", [])}:
+        raise ValueError("Ese usuario no está registrado en la web.")
+    set_premium_user(uid, False)
+    return True
+
+
+def registered_web_users():
+    stats = _read(WEB_STATS_FILE, {"users": []})
+    users = sorted({str(value) for value in stats.get("users", []) if str(value).isdecimal()})
+    return [{"id": uid, "premium": is_premium_user(uid), "expires_at": premium_expiry(uid)} for uid in users]
 
 
 def generate_premium_key(days, creator_id):
@@ -66,13 +112,7 @@ def generate_premium_key(days, creator_id):
     key = "VANT-" + secrets.token_urlsafe(24)
     with _lock:
         keys = _read(PREMIUM_KEYS_FILE, {})
-        keys[_key_hash(key)] = {
-            "days": days,
-            "created_at": int(time.time()),
-            "created_by": str(creator_id),
-            "redeemed_by": None,
-            "redeemed_at": None,
-        }
+        keys[_key_hash(key)] = {"days": days, "created_at": int(time.time()), "created_by": str(creator_id), "redeemed_by": None, "redeemed_at": None}
         _write(PREMIUM_KEYS_FILE, keys)
     return key
 
@@ -91,11 +131,7 @@ def redeem_premium_key(key, user_id):
         if is_premium_user(uid):
             return False
         now = int(time.time())
-        users[uid] = {
-            "expires_at": now + int(record.get("days", 0)) * 86400,
-            "source": "key",
-            "key_hash": digest,
-        }
+        users[uid] = {"expires_at": now + int(record.get("days", 0)) * 86400, "source": "key", "key_hash": digest}
         record["redeemed_by"] = uid
         record["redeemed_at"] = now
         keys[digest] = record

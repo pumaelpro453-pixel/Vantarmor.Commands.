@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#09090b">
+  <title>Administración Premium · Vantarmor</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/admin.js" defer></script>
+  <style>
+    body{min-height:100vh;background:#08090d;color:#f4f4f5;font:16px system-ui,sans-serif;margin:0;padding:32px 18px}.admin{max-width:900px;margin:auto}.panel{background:#12141b;border:1px solid #292d3a;border-radius:20px;padding:24px;margin:18px 0}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}label{display:grid;gap:7px;color:#c5c8d2}input,select,button{font:inherit;border-radius:10px;padding:11px 13px;border:1px solid #383d4d;background:#0b0d12;color:#fff}button{background:#a6f3c2;color:#111;font-weight:700;cursor:pointer;border:0}button.danger{background:#ff8585}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:12px;border-bottom:1px solid #292d3a}small,.muted{color:#a1a1aa}.status{min-height:24px}.actions{display:flex;gap:8px}a{color:#a6f3c2}
+  </style>
+</head>
+<body><main class="admin"><a href="/">← Volver a Vantarmor</a><h1>Administración Premium</h1><p class="muted">Concede o revoca Premium a personas que ya iniciaron sesión en la web.</p>
+  <section id="login" class="panel" hidden><p>Inicia sesión con Discord para continuar.</p><a href="/auth/discord">Iniciar sesión con Discord</a></section>
+  <section id="denied" class="panel" hidden><p>Esta cuenta no está autorizada para administrar Premium. El propietario debe incluir tu ID de Discord en <code>PREMIUM_MANAGER_IDS</code> en Railway.</p></section>
+  <section id="dashboard" hidden>
+    <div class="panel"><h2>Conceder Premium</h2><form id="grant-form"><div class="row"><label>Usuario registrado<select id="user-select" required></select></label><label>Días (1–3650)<input id="days" type="number" min="1" max="3650" value="30"></label><label><span>Duración</span><span><input id="permanent" type="checkbox"> Permanente</span></label><button type="submit">Conceder Premium</button></div></form><p id="status" class="status" role="status"></p></div>
+    <div class="panel"><div class="row" style="justify-content:space-between"><h2>Personas registradas</h2><button id="refresh" type="button">Actualizar</button></div><div style="overflow-x:auto"><table><thead><tr><th>ID Discord</th><th>Estado Premium</th><th>Vence</th><th>Acción</th></tr></thead><tbody id="users"></tbody></table></div></div>
+  </section>
+</main></body></html>
