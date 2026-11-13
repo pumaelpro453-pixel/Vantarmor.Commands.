@@ -9,6 +9,7 @@ from pathlib import Path
 DATA_DIR = Path(os.getenv("VANTARMOR_DATA_DIR", "."))
 PREMIUM_USERS_FILE = DATA_DIR / "premium_users.json"
 PREMIUM_KEYS_FILE = DATA_DIR / "premium_keys.json"
+PREMIUM_REVOKED_FILE = DATA_DIR / "premium_revoked.json"
 WEB_STATS_FILE = DATA_DIR / "web_stats.json"
 _lock = threading.RLock()
 
@@ -37,24 +38,32 @@ def is_premium_manager(user_id):
     return str(user_id) in managers
 
 
+def _revoked_users():
+    return {str(value) for value in _read(PREMIUM_REVOKED_FILE, [])}
+
+
 def premium_expiry(user_id):
+    uid = str(user_id)
+    if uid in _revoked_users():
+        return 0
     users = _read(PREMIUM_USERS_FILE, {})
-    entry = users.get(str(user_id))
+    entry = users.get(uid)
+    now = int(time.time())
     if entry is True:
         return None
     if isinstance(entry, int) and not isinstance(entry, bool):
-        return entry if entry > int(time.time()) else 0
+        return entry if entry > now else 0
     if isinstance(entry, dict):
         expiry = entry.get("expires_at")
         if expiry is None:
             return None
         try:
             expiry = int(expiry)
-            return expiry if expiry > int(time.time()) else 0
+            return expiry if expiry > now else 0
         except (TypeError, ValueError):
             return 0
     env_ids = {item.strip() for item in os.getenv("PREMIUM_USER_IDS", "").split(",") if item.strip()}
-    return None if str(user_id) in env_ids else 0
+    return None if uid in env_ids else 0
 
 
 def is_premium_user(user_id):
@@ -63,24 +72,32 @@ def is_premium_user(user_id):
 
 
 def set_premium_user(user_id, enabled=True, *, expires_at=None, source="web_admin"):
+    uid = str(user_id)
     with _lock:
         users = _read(PREMIUM_USERS_FILE, {})
-        uid = str(user_id)
+        revoked = _revoked_users()
         if enabled:
             users[uid] = {"expires_at": None if expires_at is None else int(expires_at), "source": source}
+            revoked.discard(uid)
         else:
             users.pop(uid, None)
+            revoked.add(uid)
         _write(PREMIUM_USERS_FILE, users)
+        _write(PREMIUM_REVOKED_FILE, sorted(revoked))
         return users.get(uid)
+
+
+def _registered_ids():
+    stats = _read(WEB_STATS_FILE, {"users": []})
+    return {str(value) for value in stats.get("users", [])}
 
 
 def grant_registered_user(user_id, *, days=None):
     uid = str(user_id)
     if not uid.isdecimal():
         raise ValueError("El ID de usuario no es válido.")
-    stats = _read(WEB_STATS_FILE, {"users": []})
-    if uid not in {str(value) for value in stats.get("users", [])}:
-        raise ValueError("Solo puedes dar Premium a una persona que ya se haya registrado en la web.")
+    if uid not in _registered_ids():
+        raise ValueError("Ese usuario aún no ha iniciado sesión en la web.")
     if days is not None and not 1 <= int(days) <= 3650:
         raise ValueError("La duración debe estar entre 1 y 3650 días.")
     expiry = None if days is None else int(time.time()) + int(days) * 86400
@@ -92,17 +109,17 @@ def revoke_user_premium(user_id):
     uid = str(user_id)
     if not uid.isdecimal():
         raise ValueError("El ID de usuario no es válido.")
-    stats = _read(WEB_STATS_FILE, {"users": []})
-    if uid not in {str(value) for value in stats.get("users", [])}:
-        raise ValueError("Ese usuario no está registrado en la web.")
+    if uid not in _registered_ids():
+        raise ValueError("Ese usuario aún no ha iniciado sesión en la web.")
     set_premium_user(uid, False)
     return True
 
 
 def registered_web_users():
     stats = _read(WEB_STATS_FILE, {"users": []})
+    profiles = stats.get("profiles", {}) if isinstance(stats.get("profiles", {}), dict) else {}
     users = sorted({str(value) for value in stats.get("users", []) if str(value).isdecimal()})
-    return [{"id": uid, "premium": is_premium_user(uid), "expires_at": premium_expiry(uid)} for uid in users]
+    return [{"id": uid, "name": profiles.get(uid, {}).get("name", ""), "username": profiles.get(uid, {}).get("username", ""), "premium": is_premium_user(uid), "expires_at": premium_expiry(uid)} for uid in users]
 
 
 def generate_premium_key(days, creator_id):
@@ -136,8 +153,7 @@ def redeem_premium_key(key, user_id):
         record["redeemed_at"] = now
         keys[digest] = record
         _write(PREMIUM_USERS_FILE, users)
-        _write(PREMIUM_KEYS_FILE, keys)
-    return True
+        return _write(PREMIUM_KEYS_FILE, keys) is None
 
 
 def delete_premium_key(key):
@@ -155,18 +171,25 @@ def delete_premium_key(key):
             entitlement = users.get(str(uid))
             if isinstance(entitlement, dict) and entitlement.get("key_hash") == digest:
                 users.pop(str(uid), None)
+                _write(PREMIUM_USERS_FILE, users)
         keys.pop(digest, None)
-        _write(PREMIUM_USERS_FILE, users)
         _write(PREMIUM_KEYS_FILE, keys)
     return True
 
 
-def register_web_user(user_id):
+def register_web_user(user_id, profile=None):
     with _lock:
         stats = _read(WEB_STATS_FILE, {"users": []})
         users = {str(value) for value in stats.get("users", [])}
-        users.add(str(user_id))
+        uid = str(user_id)
+        users.add(uid)
         stats["users"] = sorted(users)
+        stats.setdefault("profiles", {})
+        if isinstance(profile, dict):
+            stats["profiles"][uid] = {
+                "name": str(profile.get("global_name") or profile.get("username") or "")[:100],
+                "username": str(profile.get("username") or "")[:100],
+            }
         _write(WEB_STATS_FILE, stats)
         return len(users)
 

@@ -12,7 +12,8 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from premium_store import (
-    grant_registered_user,
+    delete_premium_key,
+    generate_premium_key,
     is_premium_manager,
     is_premium_user,
     public_stats,
@@ -20,6 +21,7 @@ from premium_store import (
     register_web_user,
     registered_web_users,
     revoke_user_premium,
+    grant_registered_user,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -68,6 +70,12 @@ class Handler(SimpleHTTPRequestHandler):
 
     def send_error_json(self, message, status=400):
         self.send_json({"error": message}, status)
+
+    def redirect(self, location):
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
 
     def get_cookie(self, name):
         jar = SimpleCookie()
@@ -140,7 +148,7 @@ class Handler(SimpleHTTPRequestHandler):
                 print(f"Discord OAuth falló: {type(exc).__name__}")
                 return self.send_error_json("No se pudo completar el inicio de sesión. Revisa las variables OAuth y la URL de retorno.", 502)
             sid, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-            register_web_user(user["id"])
+            register_web_user(user["id"], user)
             with LOCK:
                 SESSIONS[sid] = {"user": user, "access_token": access_token, "csrf": csrf, "expires": time.time() + min(int(tokens.get("expires_in", 3600)), 86400)}
             self.send_response(302)
@@ -153,10 +161,8 @@ class Handler(SimpleHTTPRequestHandler):
             sid = self.get_cookie("vantarmor_session")
             with LOCK:
                 SESSIONS.pop(sid, None)
-            self.send_response(302)
-            self.send_header("Location", "/")
+            self.redirect("/")
             self.send_header("Set-Cookie", self.cookie_header("vantarmor_session", "", 0))
-            self.end_headers()
             return
         if path == "/api/me":
             session = self.get_session()
@@ -188,9 +194,15 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/config.json":
             cfg = oauth_config()
             return self.send_json({"auth_enabled": bool(all(cfg.values())), "bot_client_id": cfg["client_id"], "invite_url": os.getenv("BOT_INVITE_URL", "")})
-        if path == "/admin":
-            return self.send_response(302) or self.send_header("Location", "/admin.html")
-        if path in ("/", "/index.html", "/admin.html") or path.startswith("/assets/"):
+        if path in ("/admin", "/admin.html"):
+            session = self.get_session()
+            if not session:
+                return self.redirect("/auth/discord")
+            if not self.require_admin(session):
+                return self.send_error(403, "No autorizado para administrar Premium")
+            self.path = "/admin.html"
+            return super().do_GET()
+        if path in ("/", "/index.html") or path.startswith("/assets/"):
             return super().do_GET()
         return self.send_error(404, "Not found")
 
@@ -220,7 +232,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not success:
                 return self.send_json({"ok": False, "message": "La key no existe, ya fue usada o no es válida."}, 400)
             return self.send_json({"ok": True, "message": "¡Premium activado en tu cuenta!"})
-        if path not in ("/api/admin/grant", "/api/admin/revoke"):
+        if path not in ("/api/admin/grant", "/api/admin/revoke", "/api/admin/keys/generate", "/api/admin/keys/revoke"):
             return self.send_error_json("No encontrado.", 404)
         if not self.require_admin(session):
             return self.send_error_json("No tienes permiso para administrar Premium.", 403)
@@ -228,6 +240,15 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_error_json("Verificación de seguridad fallida.", 403)
         try:
             data = self.read_json_body()
+            if path == "/api/admin/keys/generate":
+                days = int(data.get("days", 0))
+                key = generate_premium_key(days, session["user"]["id"])
+                return self.send_json({"ok": True, "key": key, "days": days})
+            if path == "/api/admin/keys/revoke":
+                key = str(data.get("key", "")).strip()
+                if not delete_premium_key(key):
+                    return self.send_error_json("La key no existe o no es válida.", 400)
+                return self.send_json({"ok": True, "message": "Key eliminada; si estaba canjeada, se revocó el Premium que concedió."})
             user_id = str(data.get("user_id", ""))
             if path.endswith("/grant"):
                 permanent = bool(data.get("permanent", False))
